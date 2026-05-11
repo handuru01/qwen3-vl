@@ -319,8 +319,123 @@ add_table(doc,
     ]
 )
 
-# ── 8. 환경변수 ───────────────────────────────────────────────────────────────
-add_heading(doc, "8. 환경변수 (.env)")
+# ── 8. GitHub 소스코드 공개 ───────────────────────────────────────────────────
+add_heading(doc, "8. GitHub 소스코드 공개")
+add_divider(doc)
+add_paragraph(doc,
+    "개발이 완료된 소스코드를 GitHub에 공개하였습니다. "
+    "공개 저장소 주소: https://github.com/handuru01/qwen3-vl")
+
+add_heading(doc, "8.1 사전 준비 — .gitignore / .env.example 생성", level=2)
+add_paragraph(doc,
+    ".env 파일에는 서버 주소 등 환경별 설정이 포함되므로 저장소에서 제외하고, "
+    "대신 .env.example 파일을 제공하여 사용자가 참고할 수 있도록 하였습니다.")
+add_code(doc,
+    "# .gitignore 주요 항목\n"
+    ".env          # 실제 환경변수 파일 제외\n"
+    "__pycache__/\n"
+    "*.pyc\n"
+    "venv/"
+)
+add_code(doc,
+    "# .env.example\n"
+    "OLLAMA_HOST=http://localhost:11434\n"
+    "OLLAMA_MODEL=qwen3-vl:8b\n"
+    "REQUEST_TIMEOUT=180\n"
+    "MAX_IMAGE_BYTES=10485760\n"
+    "APP_PORT=8001"
+)
+
+add_heading(doc, "8.2 git 저장소 초기화", level=2)
+add_paragraph(doc,
+    "처음에는 상위 디렉토리(/mnt/data/handuru/)가 git 루트로 잡혀 파일 경로에 "
+    "qwen3-vl/ 접두사가 붙는 문제가 발생하였습니다. "
+    "상위 디렉토리의 커밋을 되돌린 후 프로젝트 디렉토리 안에 git 저장소를 새로 초기화하여 해결하였습니다.")
+add_code(doc,
+    "# 상위 디렉토리의 잘못된 커밋 되돌리기\n"
+    "git -C /mnt/data/handuru update-ref -d HEAD\n\n"
+    "# 프로젝트 디렉토리에 git 저장소 초기화\n"
+    "git init /mnt/data/handuru/qwen3-vl\n"
+    "git -C /mnt/data/handuru/qwen3-vl config user.name \"handuru\"\n"
+    "git -C /mnt/data/handuru/qwen3-vl config user.email \"hftsys@gmail.com\"\n"
+    "git -C /mnt/data/handuru/qwen3-vl branch -m main"
+)
+
+add_heading(doc, "8.3 초기 커밋", level=2)
+add_paragraph(doc, "11개 파일을 스테이징하고 커밋하였습니다. (.env는 .gitignore에 의해 자동 제외)")
+add_code(doc,
+    "git add .\n"
+    "git commit -m \"Initial commit: Qwen3-VL multimodal chat web service\""
+)
+add_table(doc,
+    ["커밋 포함 파일", "설명"],
+    [
+        [".env.example",          "환경변수 예시"],
+        [".gitignore",            "git 제외 목록"],
+        ["CLAUDE.md",             "프로젝트 문서"],
+        ["Dockerfile",            "컨테이너 빌드"],
+        ["docker-compose.yml",    "Docker Compose 설정"],
+        ["apache-qwen3-vl.conf",  "Apache 설정 참고용"],
+        ["qwen3-vl.service",      "systemd 서비스 파일"],
+        ["main.py",               "FastAPI 백엔드"],
+        ["requirements.txt",      "Python 의존성"],
+        ["conversation.txt",      "개발 대화 기록"],
+        ["static/index.html",     "채팅 UI"],
+    ]
+)
+
+add_heading(doc, "8.4 GitHub 원격 저장소 연결 및 푸시", level=2)
+add_paragraph(doc,
+    "https://github.com/new 에서 저장소를 생성한 후 원격 저장소를 연결하고 푸시하였습니다. "
+    "GitHub 인증은 Personal Access Token(PAT)을 사용합니다.")
+add_code(doc,
+    "git remote add origin https://github.com/handuru01/qwen3-vl.git\n"
+    "git push -u origin main"
+)
+
+add_heading(doc, "8.5 README 작성", level=2)
+add_paragraph(doc,
+    "GitHub 저장소 메인 화면에 표시될 README.md(영문)와 "
+    "README.ko.md(한국어) 두 버전을 작성하였습니다.")
+add_bullet(doc, "README.md — 영문 (GitHub 기본 표시)")
+add_bullet(doc, "README.ko.md — 한국어")
+
+add_heading(doc, "8.6 docs/ 폴더 구성", level=2)
+add_paragraph(doc, "개발보고서 및 문서 파일을 docs/ 폴더에 정리하여 GitHub에 함께 공개하였습니다.")
+add_code(doc,
+    "docs/\n"
+    "├── README.txt                            # 영문 README 텍스트 버전\n"
+    "├── qwen3-vl-개발보고서.docx               # 한국어 개발보고서\n"
+    "└── qwen3-vl-development report-en-US.docx # 영문 개발보고서"
+)
+
+add_heading(doc, "8.7 최종 GitHub 저장소 구성", level=2)
+add_code(doc,
+    "qwen3-vl/\n"
+    "├── README.md                           ← 영문 (GitHub 메인)\n"
+    "├── README.ko.md                        ← 한국어\n"
+    "├── README.txt\n"
+    "├── main.py\n"
+    "├── requirements.txt\n"
+    "├── .env.example\n"
+    "├── .gitignore\n"
+    "├── Dockerfile\n"
+    "├── docker-compose.yml\n"
+    "├── apache-qwen3-vl.conf\n"
+    "├── qwen3-vl.service\n"
+    "├── make_report.py\n"
+    "├── CLAUDE.md\n"
+    "├── conversation.txt\n"
+    "├── docs/\n"
+    "│   ├── README.txt\n"
+    "│   ├── qwen3-vl-개발보고서.docx\n"
+    "│   └── qwen3-vl-development report- en-US.docx\n"
+    "└── static/\n"
+    "    └── index.html"
+)
+
+# ── 9. 환경변수 ───────────────────────────────────────────────────────────────
+add_heading(doc, "9. 환경변수 (.env)")
 add_divider(doc)
 add_table(doc,
     ["변수명", "기본값", "설명"],
@@ -333,8 +448,8 @@ add_table(doc,
     ]
 )
 
-# ── 9. 프로젝트 구조 ──────────────────────────────────────────────────────────
-add_heading(doc, "9. 프로젝트 구조")
+# ── 10. 프로젝트 구조 ─────────────────────────────────────────────────────────
+add_heading(doc, "10. 프로젝트 구조")
 add_divider(doc)
 add_code(doc,
     "qwen3-vl/\n"
@@ -353,8 +468,8 @@ add_code(doc,
     "    └── index.html          # 채팅 UI (이미지 업로드 포함)"
 )
 
-# ── 10. 동작 확인 ─────────────────────────────────────────────────────────────
-add_heading(doc, "10. 동작 확인")
+# ── 11. 동작 확인 ─────────────────────────────────────────────────────────────
+add_heading(doc, "11. 동작 확인")
 add_divider(doc)
 add_paragraph(doc, "헬스체크 API 응답 (curl http://127.0.0.1:8001/api/health):")
 add_code(doc,
@@ -368,8 +483,8 @@ add_code(doc,
 add_paragraph(doc, "브라우저 접속 후 이미지 첨부 및 질의응답 정상 동작 확인 완료.")
 add_paragraph(doc, "리부팅 후 서비스 자동 시작 확인 완료.")
 
-# ── 11. 마치며 ────────────────────────────────────────────────────────────────
-add_heading(doc, "11. 마치며")
+# ── 12. 마치며 ────────────────────────────────────────────────────────────────
+add_heading(doc, "12. 마치며")
 add_divider(doc)
 add_paragraph(doc,
     "Ollama 덕분에 GPU 코드 한 줄 없이 로컬에서 멀티모달 AI 서비스를 구동할 수 있었습니다. "
