@@ -1,0 +1,22 @@
+# 환경변수 파일 (실제 설정값 — 저장소에 포함하지 않음)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# 가상환경
+venv/
+.venv/
+env/
+
+# 에디터
+.DS_Store
+*.swp
+*.swo
+
+# 로그
+*.log

@@ -1,0 +1,14 @@
+services:
+  qwen3-vl:
+    build: .
+    ports:
+      - "8001:8001"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_MODEL=qwen3-vl:8b
+      - REQUEST_TIMEOUT=180
+      - MAX_IMAGE_BYTES=10485760
+    # 컨테이너 안에서 호스트의 Ollama(11434)에 접근하기 위한 설정
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

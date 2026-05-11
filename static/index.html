@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Qwen3-VL Chat by 김상민</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #161a22;
+      --border: #262b36;
+      --text: #e6e8eb;
+      --muted: #8a93a3;
+      --user: #2563eb;
+      --assistant: #1f2937;
+      --accent: #22c55e;
+      --danger: #ef4444;
+      --think-bg: #1a1f2e;
+      --think-border: #3b4a6b;
+      --think-text: #6b7fa3;
+      --thumb-size: 72px;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+    }
+    .app {
+      display: flex; flex-direction: column;
+      height: 100vh; max-width: 880px; margin: 0 auto;
+      padding: 16px;
+    }
+
+    /* ── 헤더 ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 4px 16px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; white-space: nowrap; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .status { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .status .dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); margin-right: 6px; vertical-align: middle;
+    }
+    .status.ok .dot  { background: var(--accent); }
+    .status.err .dot { background: var(--danger); }
+    .toggle-wrap {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--muted); white-space: nowrap; cursor: pointer;
+      user-select: none;
+    }
+    .toggle-wrap input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+
+    /* ── 채팅 영역 ── */
+    #chat {
+      flex: 1; overflow-y: auto; padding: 16px 4px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .msg { display: flex; flex-direction: column; }
+    .msg.user { align-items: flex-end; }
+    .msg.assistant { align-items: flex-start; }
+
+    /* 메시지 내 이미지 썸네일 그리드 */
+    .msg-images {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      max-width: 80%; margin-bottom: 4px;
+    }
+    .msg.user .msg-images { justify-content: flex-end; }
+    .msg-thumb {
+      width: var(--thumb-size); height: var(--thumb-size);
+      object-fit: cover; border-radius: 6px;
+      border: 1px solid var(--border);
+      cursor: zoom-in; transition: opacity .15s;
+    }
+    .msg-thumb:hover { opacity: .85; }
+
+    /* 텍스트 말풍선 */
+    .bubble {
+      max-width: 80%;
+      padding: 10px 14px; border-radius: 12px;
+      line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+      font-size: 14px;
+    }
+    .msg.user .bubble {
+      background: var(--user); color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.assistant .bubble {
+      background: var(--assistant); color: var(--text);
+      border: 1px solid var(--border); border-bottom-left-radius: 4px;
+    }
+
+    /* ── <think> 블록 ── */
+    .think-block {
+      max-width: 80%;
+      margin-bottom: 4px;
+      border: 1px solid var(--think-border);
+      border-radius: 8px; overflow: hidden; font-size: 12px;
+    }
+    .think-summary {
+      padding: 6px 10px;
+      background: var(--think-bg); color: var(--think-text);
+      cursor: pointer; user-select: none; list-style: none;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .think-summary::marker { display: none; }
+    .think-summary::-webkit-details-marker { display: none; }
+    .think-icon { font-size: 10px; transition: transform .2s; }
+    details[open] .think-icon { transform: rotate(90deg); }
+    .think-content {
+      padding: 8px 10px;
+      background: var(--think-bg); color: var(--think-text);
+      white-space: pre-wrap; word-break: break-word;
+      border-top: 1px solid var(--think-border); line-height: 1.5;
+    }
+
+    /* 스트리밍 커서 */
+    .cursor::after {
+      content: "▋";
+      animation: blink .7s step-end infinite;
+      color: var(--accent); margin-left: 1px;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ── 입력 영역 ── */
+    .input-area {
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+
+    /* 이미지 미리보기 스트립 */
+    #preview-strip {
+      display: none;   /* 이미지 있을 때만 표시 */
+      flex-direction: row; gap: 8px;
+      overflow-x: auto; padding: 4px 0;
+    }
+    #preview-strip.visible { display: flex; }
+    .preview-wrap {
+      position: relative; flex-shrink: 0;
+      width: var(--thumb-size); height: var(--thumb-size);
+    }
+    .preview-img {
+      width: 100%; height: 100%;
+      object-fit: cover; border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .preview-remove {
+      position: absolute; top: -6px; right: -6px;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--danger); color: white;
+      border: none; cursor: pointer;
+      font-size: 10px; line-height: 18px; text-align: center;
+      padding: 0; display: flex; align-items: center; justify-content: center;
+      font-weight: bold;
+    }
+
+    /* 전송 폼 */
+    .input-row {
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+    .attach-btn {
+      flex-shrink: 0;
+      width: 40px; height: 44px;
+      background: var(--panel); color: var(--muted);
+      border: 1px solid var(--border); border-radius: 10px;
+      cursor: pointer; font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      transition: color .15s, border-color .15s;
+    }
+    .attach-btn:hover { color: var(--text); border-color: var(--muted); }
+    textarea {
+      flex: 1; resize: none; min-height: 44px; max-height: 160px;
+      padding: 10px 12px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--panel); color: var(--text);
+      font-family: inherit; font-size: 14px; line-height: 1.4; outline: none;
+      transition: border-color .15s;
+    }
+    textarea:focus { border-color: #3b82f6; }
+    textarea.drag-over { border-color: var(--accent); border-style: dashed; }
+    button[type="submit"] {
+      flex-shrink: 0;
+      padding: 0 18px; min-width: 72px; height: 44px;
+      background: var(--user); color: white;
+      border: none; border-radius: 10px;
+      font-weight: 600; cursor: pointer; transition: opacity .15s;
+    }
+    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .hint-center { text-align: center; }
+
+    /* ── 라이트박스 ── */
+    #lightbox {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.85);
+      z-index: 1000;
+      align-items: center; justify-content: center;
+      cursor: zoom-out;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img {
+      max-width: 92vw; max-height: 92vh;
+      border-radius: 8px; object-fit: contain;
+      box-shadow: 0 0 40px rgba(0,0,0,.7);
+    }
+    #lightbox-close {
+      position: fixed; top: 16px; right: 20px;
+      color: white; font-size: 28px; cursor: pointer;
+      line-height: 1; user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Qwen3-VL Chat by 김상민</h1>
+      <div class="header-right">
+        <label class="toggle-wrap">
+          <input type="checkbox" id="stream-toggle" checked />
+          스트리밍
+        </label>
+        <div id="status" class="status">
+          <span class="dot"></span><span id="status-text">확인 중…</span>
+        </div>
+      </div>
+    </header>
+
+    <div id="chat" aria-live="polite"></div>
+
+    <div class="input-area">
+      <!-- 이미지 미리보기 스트립 -->
+      <div id="preview-strip"></div>
+
+      <!-- 전송 폼 -->
+      <form id="form">
+        <div class="input-row">
+          <button type="button" class="attach-btn" id="attach-btn" title="이미지 첨부 (또는 드래그&드롭, Ctrl+V)">
+            📎
+          </button>
+          <textarea
+            id="input"
+            placeholder="메시지를 입력하세요  (Enter: 전송, Shift+Enter: 줄바꿈)"
+            autofocus
+          ></textarea>
+          <button type="submit" id="send">전송</button>
+        </div>
+      </form>
+
+      <!-- 숨겨진 파일 입력 -->
+      <input type="file" id="file-input" accept="image/*" multiple style="display:none" />
+
+      <div class="hint">이미지 첨부: 📎 버튼 · 드래그&드롭 · 클립보드 붙여넣기(Ctrl+V) · 최대 4장 / 10 MB</div>
+      <div class="hint hint-center">이 Qwen3-VL 서비스는 김상민 로컬 컴퓨터에서 동작 중입니다</div>
+    </div>
+  </div>
+
+  <!-- 라이트박스 -->
+  <div id="lightbox">
+    <span id="lightbox-close">✕</span>
+    <img id="lightbox-img" src="" alt="확대 이미지" />
+  </div>
+
+  <script>
+    // ─── API 베이스 경로 (서브패스 배포 대응) ─────────────────────────────────
+    const API_BASE = (() => {
+      let path = window.location.pathname;
+      path = path.replace(/\/[^/]*\.html$/, '');
+      path = path.replace(/\/static$/, '');
+      path = path.replace(/\/$/, '');
+      return path;
+    })();
+
+    // ─── 상수 ─────────────────────────────────────────────────────────────────
+    const MAX_IMAGES  = 4;                    // 메시지당 최대 이미지 수
+    const MAX_IMG_MB  = 10;                   // 파일 크기 제한 (MB)
+    const MAX_IMG_B   = MAX_IMG_MB * 1024 * 1024;
+
+    // ─── 상태 ─────────────────────────────────────────────────────────────────
+    // 전송 대기 중인 이미지: [{dataUri: string, name: string}]
+    let pendingImages = [];
+    // 대화 히스토리: [{role, content, images?: [dataUri]}]
+    const history = [];
+
+    // ─── DOM 참조 ─────────────────────────────────────────────────────────────
+    const $chat        = document.getElementById('chat');
+    const $form        = document.getElementById('form');
+    const $input       = document.getElementById('input');
+    const $send        = document.getElementById('send');
+    const $status      = document.getElementById('status');
+    const $statusT     = document.getElementById('status-text');
+    const $toggle      = document.getElementById('stream-toggle');
+    const $attachBtn   = document.getElementById('attach-btn');
+    const $fileInput   = document.getElementById('file-input');
+    const $strip       = document.getElementById('preview-strip');
+    const $lightbox    = document.getElementById('lightbox');
+    const $lbImg       = document.getElementById('lightbox-img');
+    const $lbClose     = document.getElementById('lightbox-close');
+
+    // ─── 헬스체크 ─────────────────────────────────────────────────────────────
+    async function checkHealth() {
+      try {
+        const r = await fetch(`${API_BASE}/api/health`);
+        const d = await r.json();
+        if (d.model_ready) {
+          $status.className = 'status ok';
+          $statusT.textContent = `${d.target_model} 준비됨`;
+        } else {
+          $status.className = 'status err';
+          $statusT.textContent = `모델 없음: ${d.target_model}`;
+        }
+      } catch {
+        $status.className = 'status err';
+        $statusT.textContent = '서버 연결 실패';
+      }
+    }
+    checkHealth();
+
+    // ─── 이미지 로드 ──────────────────────────────────────────────────────────
+    function readFileAsDataUri(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = e => resolve(e.target.result);
+        reader.onerror = () => reject(new Error(`파일 읽기 실패: ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function addImages(files) {
+      for (const file of files) {
+        if (pendingImages.length >= MAX_IMAGES) {
+          alert(`이미지는 최대 ${MAX_IMAGES}장까지 첨부할 수 있습니다.`);
+          break;
+        }
+        if (!file.type.startsWith('image/')) {
+          alert(`이미지 파일만 첨부할 수 있습니다. (${file.name})`);
+          continue;
+        }
+        if (file.size > MAX_IMG_B) {
+          alert(`파일 크기가 ${MAX_IMG_MB} MB를 초과합니다. (${file.name})`);
+          continue;
+        }
+        const dataUri = await readFileAsDataUri(file);
+        pendingImages.push({ dataUri, name: file.name });
+      }
+      renderPreviewStrip();
+    }
+
+    // ─── 미리보기 스트립 렌더링 ───────────────────────────────────────────────
+    function renderPreviewStrip() {
+      $strip.innerHTML = '';
+      if (pendingImages.length === 0) {
+        $strip.classList.remove('visible');
+        return;
+      }
+      $strip.classList.add('visible');
+      pendingImages.forEach((img, idx) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'preview-wrap';
+
+        const el = document.createElement('img');
+        el.src = img.dataUri;
+        el.className = 'preview-img';
+        el.alt = img.name;
+        el.title = img.name;
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'preview-remove';
+        btn.textContent = '✕';
+        btn.title = '제거';
+        btn.addEventListener('click', () => {
+          pendingImages.splice(idx, 1);
+          renderPreviewStrip();
+        });
+
+        wrap.appendChild(el);
+        wrap.appendChild(btn);
+        $strip.appendChild(wrap);
+      });
+    }
+
+    // ─── 라이트박스 ───────────────────────────────────────────────────────────
+    function openLightbox(src) {
+      $lbImg.src = src;
+      $lightbox.classList.add('open');
+    }
+    function closeLightbox() {
+      $lightbox.classList.remove('open');
+      $lbImg.src = '';
+    }
+    $lightbox.addEventListener('click', e => { if (e.target === $lightbox) closeLightbox(); });
+    $lbClose.addEventListener('click', closeLightbox);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+    // ─── <think> 블록 분리 ────────────────────────────────────────────────────
+    function splitThink(raw) {
+      const segments = [];
+      const re = /<think>([\s\S]*?)<\/think>/g;
+      let last = 0, m;
+      while ((m = re.exec(raw)) !== null) {
+        if (m.index > last) segments.push({ type: 'text', content: raw.slice(last, m.index) });
+        segments.push({ type: 'think', content: m[1] });
+        last = re.lastIndex;
+      }
+      const remaining = raw.slice(last);
+      const openIdx = remaining.lastIndexOf('<think>');
+      if (openIdx !== -1) {
+        if (openIdx > 0) segments.push({ type: 'text', content: remaining.slice(0, openIdx) });
+        segments.push({ type: 'think-open', content: remaining.slice(openIdx + 7) });
+      } else if (remaining) {
+        segments.push({ type: 'text', content: remaining });
+      }
+      return segments;
+    }
+
+    // ─── 어시스턴트 버블 렌더링 ───────────────────────────────────────────────
+    function renderAssistant(wrapper, rawContent, streaming) {
+      wrapper.innerHTML = '';
+      const segments = splitThink(rawContent);
+      let hasText = false;
+
+      for (const seg of segments) {
+        if (seg.type === 'think' || seg.type === 'think-open') {
+          const details = document.createElement('details');
+          const summary = document.createElement('summary');
+          summary.className = 'think-summary';
+          summary.innerHTML = '<span class="think-icon">▶</span> 생각 중…';
+          const content = document.createElement('div');
+          content.className = 'think-content';
+          content.textContent = seg.content;
+          details.appendChild(summary);
+          details.appendChild(content);
+          details.className = 'think-block';
+          wrapper.appendChild(details);
+        } else {
+          const bubble = document.createElement('div');
+          bubble.className = 'bubble' +
+            (streaming && seg === segments[segments.length - 1] ? ' cursor' : '');
+          bubble.textContent = seg.content;
+          wrapper.appendChild(bubble);
+          hasText = true;
+        }
+      }
+
+      if (!hasText) {
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble' + (streaming ? ' cursor' : '');
+        wrapper.appendChild(bubble);
+      }
+      $chat.scrollTop = $chat.scrollHeight;
+    }
+
+    // ─── 사용자 메시지 추가 ───────────────────────────────────────────────────
+    function appendUserMessage(content, images) {
+      const wrap = document.createElement('div');
+      wrap.className = 'msg user';
+
+      // 이미지 썸네일
+      if (images && images.length > 0) {
+        const grid = document.createElement('div');
+        grid.className = 'msg-images';
+        images.forEach(dataUri => {
+          const img = document.createElement('img');
+          img.src = dataUri;
+          img.className = 'msg-thumb';
+          img.alt = '첨부 이미지';
+          img.addEventListener('click', () => openLightbox(dataUri));
+          grid.appendChild(img);
+        });
+        wrap.appendChild(grid);
+      }
+
+      // 텍스트 말풍선
+      if (content) {
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.textContent = content;
+        wrap.appendChild(bubble);
+      }
+
+      $chat.appendChild(wrap);
+      $chat.scrollTop = $chat.scrollHeight;
+    }
+
+    // ─── 어시스턴트 래퍼 생성 ─────────────────────────────────────────────────
+    function createAssistantWrapper() {
+      const wrap = document.createElement('div');
+      wrap.className = 'msg assistant';
+      $chat.appendChild(wrap);
+      return wrap;
+    }
+
+    // ─── 비스트리밍 전송 ──────────────────────────────────────────────────────
+    async function sendNonStream(text, images) {
+      history.push({ role: 'user', content: text, images });
+      appendUserMessage(text, images);
+
+      const wrapper = createAssistantWrapper();
+      renderAssistant(wrapper, '…', false);
+      $send.disabled = true;
+
+      try {
+        const r = await fetch(`${API_BASE}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: history, stream: false }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+        const d = await r.json();
+        const reply = d.response || '(빈 응답)';
+        renderAssistant(wrapper, reply, false);
+        history.push({ role: 'assistant', content: reply, images: [] });
+      } catch (e) {
+        wrapper.innerHTML = '';
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.textContent = `⚠ 오류: ${e.message}`;
+        wrapper.appendChild(bubble);
+      } finally {
+        $send.disabled = false;
+        $input.focus();
+      }
+    }
+
+    // ─── SSE 스트리밍 전송 ────────────────────────────────────────────────────
+    async function sendStream(text, images) {
+      history.push({ role: 'user', content: text, images });
+      appendUserMessage(text, images);
+
+      const wrapper = createAssistantWrapper();
+      renderAssistant(wrapper, '', true);
+      $send.disabled = true;
+
+      let fullContent = '';
+      let sseBuffer   = '';
+
+      try {
+        const r = await fetch(`${API_BASE}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: history, stream: true }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+
+        const reader  = r.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop();   // 불완전 라인 보관
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = JSON.parse(line.slice(6));
+            if (data.error) throw new Error(data.error);
+            fullContent += data.token;
+            renderAssistant(wrapper, fullContent, !data.done);
+            if (data.done) break;
+          }
+        }
+        history.push({ role: 'assistant', content: fullContent, images: [] });
+      } catch (e) {
+        wrapper.innerHTML = '';
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.textContent = `⚠ 오류: ${e.message}`;
+        wrapper.appendChild(bubble);
+      } finally {
+        $send.disabled = false;
+        $input.focus();
+      }
+    }
+
+    // ─── 전송 분기 ────────────────────────────────────────────────────────────
+    function sendMessage(text, images) {
+      if ($toggle.checked) sendStream(text, images);
+      else sendNonStream(text, images);
+    }
+
+    // ─── 폼 이벤트 ────────────────────────────────────────────────────────────
+    $form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = $input.value.trim();
+      if (!text && pendingImages.length === 0) return;
+
+      const images = pendingImages.map(img => img.dataUri);
+      pendingImages = [];
+      renderPreviewStrip();
+      $input.value = '';
+
+      sendMessage(text, images);
+    });
+
+    $input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        $form.requestSubmit();
+      }
+    });
+
+    // ─── 파일 첨부 버튼 ───────────────────────────────────────────────────────
+    $attachBtn.addEventListener('click', () => $fileInput.click());
+    $fileInput.addEventListener('change', async () => {
+      if ($fileInput.files.length > 0) {
+        await addImages(Array.from($fileInput.files));
+        $fileInput.value = '';   // 같은 파일 재선택 허용
+      }
+    });
+
+    // ─── 드래그 & 드롭 ────────────────────────────────────────────────────────
+    $input.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      $input.classList.add('drag-over');
+    });
+    $input.addEventListener('dragleave', () => $input.classList.remove('drag-over'));
+    $input.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      $input.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+      if (files.length > 0) await addImages(files);
+    });
+
+    // ─── 클립보드 붙여넣기 ────────────────────────────────────────────────────
+    document.addEventListener('paste', async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageFiles = [];
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        await addImages(imageFiles);
+      }
+    });
+  </script>
+</body>
+</html>

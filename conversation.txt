@@ -1,0 +1,256 @@
+================================================================
+Qwen3-VL 웹서비스 개발 대화 기록
+날짜: 2026-05-05
+================================================================
+
+─────────────────────────────────────────────────────────────
+[1] CLAUDE.md / requirements.txt 작성
+─────────────────────────────────────────────────────────────
+
+사용자:
+  ~/qwen 에 있는 qwen3 웹서비스 개발을 토대로 ollama qwen3-vl:8b 버전으로
+  유사한 qwen3-vl 서비스를 ~/qwen3-vl 디렉토리에서 개발하고자 합니다.
+  qwen3-vl 웹서비스 개발을 위한 CLAUDE.md 와 requirements.txt 를 작성해 주세요.
+
+Claude:
+  ~/qwen 프로젝트 구조(main.py, static/index.html, requirements.txt, CLAUDE.md 등)를
+  분석한 뒤, ~/qwen3-vl/ 디렉토리에 두 파일을 생성.
+
+  requirements.txt (추가된 패키지):
+    fastapi==0.115.0
+    uvicorn[standard]==0.32.0
+    httpx==0.27.2
+    pydantic==2.9.2
+    python-multipart==0.0.12   ← 이미지 업로드 지원을 위해 추가
+
+  CLAUDE.md 주요 변경 사항 (qwen3:8b 대비):
+    - 모델: qwen3-vl:8b (비전-언어 모델, 이미지 입력 지원)
+    - 포트: 8001 (qwen3:8b 서비스 8000과 충돌 방지)
+    - 서브패스: /qwen3-vl/
+    - 이미지 전달: messages[].images 배열 (base64, Ollama API 규약)
+    - 타임아웃: 180초 (이미지 처리 시간 고려)
+    - 환경변수 MAX_IMAGE_BYTES 추가 (10 MB 제한)
+    - 이미지는 서버 디스크에 저장하지 않고 메모리에서만 처리
+
+─────────────────────────────────────────────────────────────
+[2] main.py / static/index.html 개발
+─────────────────────────────────────────────────────────────
+
+사용자:
+  main.py와 static/index.html(이미지 업로드 UI 포함)을 개발해 주세요.
+
+Claude:
+  두 파일 생성.
+
+  main.py 핵심 구현:
+    - ChatMessage 모델에 images: list[str] 필드 추가
+    - strip_data_uri(): data:image/...;base64, 접두사 제거
+      → Ollama API는 순수 base64만 허용
+    - validate_image_size(): base64 길이로 원본 크기 추산,
+      10 MB 초과 시 HTTP 413 반환
+    - build_ollama_messages(): messages 변환 시 images 필드 조건부 포함
+    - 타임아웃 180초, 포트 8001
+
+  static/index.html 이미지 기능:
+    - 이미지 첨부 3가지: 📎 버튼 / 드래그&드롭 / Ctrl+V 클립보드 붙여넣기
+    - 전송 전 섬네일 미리보기 스트립 (개별 ✕ 제거 버튼)
+    - 채팅 버블 내 이미지 섬네일 표시 (클릭 시 라이트박스 확대)
+    - 최대 4장 / 10 MB 제한 (클라이언트 측 검증)
+    - 기존 qwen3 기능 유지:
+        스트리밍/비스트리밍 토글, <think> 블록 접기, SSE, 멀티턴 히스토리,
+        API_BASE 자동 감지 (서브패스 배포 대응)
+
+─────────────────────────────────────────────────────────────
+[3] systemd 서비스 파일 / Apache 설정 파일 작성
+─────────────────────────────────────────────────────────────
+
+사용자:
+  systemd 서비스 파일이랑 apache 설정 파일도 만들어 주세요.
+
+Claude:
+  두 파일 생성.
+
+  qwen3-vl.service 변경 사항 (qwen-web.service 대비):
+    - 포트: 8001
+    - Environment= 라인으로 환경변수 명시
+      (OLLAMA_MODEL, REQUEST_TIMEOUT, MAX_IMAGE_BYTES)
+    - Wants/After=ollama.service 추가 (Ollama 먼저 기동 보장)
+    - TimeoutStartSec=30 추가
+    - StandardOutput/Error=journal 추가 (journalctl 로그 확인)
+
+  apache-qwen3-vl.conf 변경 사항:
+    - 서브패스: /qwen3-vl/, 포트: 8001
+    - LimitRequestBody 15728640 (15 MB — 10 MB + base64 오버헤드 33%)
+    - ProxyTimeout 185 (uvicorn 180초보다 5초 크게)
+    - flushpackets=on (SSE 스트리밍 버퍼링 비활성화)
+
+─────────────────────────────────────────────────────────────
+[4] Dockerfile / docker-compose.yml 작성
+─────────────────────────────────────────────────────────────
+
+사용자:
+  Dockerfile이랑 docker-compose.yml도 만들어 주세요.
+
+Claude:
+  두 파일 생성.
+
+  Dockerfile: python:3.11-slim 기반, 포트 8001 EXPOSE
+  docker-compose.yml 변경 사항 (qwen 대비):
+    - 포트: 8001:8001
+    - OLLAMA_MODEL=qwen3-vl:8b
+    - REQUEST_TIMEOUT=180
+    - MAX_IMAGE_BYTES=10485760 추가
+    - extra_hosts: host.docker.internal:host-gateway
+      (컨테이너 → 호스트 Ollama 접근)
+
+─────────────────────────────────────────────────────────────
+[5] 운영 서버 배포
+─────────────────────────────────────────────────────────────
+
+사용자:
+  운영 서버 /var/www/atpia.com/public_html/qwen3-vl 에 배포하여
+  서비스할 수 있게 해주세요.
+
+Claude:
+  사전 확인 사항:
+    - /var/www/atpia.com/public_html/ 소유자: handuru (sudo 불필요)
+    - Ollama 상태: active, qwen3-vl:8b 모델 로드 완료
+    - uvicorn 경로: /home/handuru/miniconda3/bin/uvicorn
+    - 기존 Apache 설정: /qwen/ 프록시 블록 존재 (lines 16~19)
+
+  배포 단계:
+    1) qwen3-vl.service ExecStart를 전체 경로로 수정
+         User=handuru
+         ExecStart=/home/handuru/miniconda3/bin/uvicorn main:app \
+                   --host 127.0.0.1 --port 8001
+    2) 파일 복사
+         cp -r ~/qwen3-vl/. /var/www/atpia.com/public_html/qwen3-vl/
+    3) 의존성 설치
+         /home/handuru/miniconda3/bin/pip install -r requirements.txt
+    4) Apache 설정 삽입 (sed 실패 → Python으로 /tmp에 수정본 생성 후 sudo cp)
+         추가된 블록:
+           ProxyPass        /qwen3-vl/ http://127.0.0.1:8001/
+                            flushpackets=on timeout=185
+           ProxyPassReverse /qwen3-vl/ http://127.0.0.1:8001/
+    5) sudo cp /tmp/atpia.com-le-ssl.conf /etc/apache2/sites-available/
+       sudo apache2ctl configtest && sudo systemctl reload apache2
+    6) sudo cp qwen3-vl.service /etc/systemd/system/
+       sudo systemctl daemon-reload && sudo systemctl enable --now qwen3-vl
+
+  최종 확인:
+    curl http://127.0.0.1:8001/api/health
+    → {"ollama":"ok","target_model":"qwen3-vl:8b","model_ready":true,...}
+
+    curl https://atpia.com/qwen3-vl/api/health
+    → {"ollama":"ok","target_model":"qwen3-vl:8b","model_ready":true,...}
+
+─────────────────────────────────────────────────────────────
+[6] 결과
+─────────────────────────────────────────────────────────────
+
+브라우저에서 정상 동작 확인.
+
+외부 접속 URL: https://atpia.com/qwen3-vl/index.html
+
+최종 프로젝트 구조:
+  qwen3-vl/
+  ├── main.py                 # FastAPI 백엔드 (멀티모달)
+  ├── requirements.txt        # Python 의존성
+  ├── CLAUDE.md               # 프로젝트 문서
+  ├── Dockerfile
+  ├── docker-compose.yml
+  ├── apache-qwen3-vl.conf    # Apache 리버스 프록시 설정 참고용
+  ├── qwen3-vl.service        # systemd 서비스 파일
+  ├── conversation.txt        # 본 대화 기록
+  └── static/
+      └── index.html          # 채팅 UI (이미지 업로드 포함)
+
+================================================================
+Qwen3-VL 웹서비스 추가 작업 대화 기록
+날짜: 2026-05-11
+================================================================
+
+─────────────────────────────────────────────────────────────
+[7] 부팅 후 서비스 자동시작 설정 (.env 파일 + 서비스 파일 개선)
+─────────────────────────────────────────────────────────────
+
+사용자:
+  리부팅하고 나니까 서비스가 자동 실행되지 않고 서비스가 중지되어 있는데,
+  리부팅되더라도 서비스가 자동 실행하도록 환경파일을 만들어 주세요.
+
+Claude:
+  원인: systemctl enable 미실행 또는 서비스 파일 미등록 추정.
+  추가로 서비스 파일의 재시작 정책 및 의존성 조건을 강화.
+
+  신규 생성 — .env:
+    OLLAMA_HOST=http://localhost:11434
+    OLLAMA_MODEL=qwen3-vl:8b
+    REQUEST_TIMEOUT=180
+    MAX_IMAGE_BYTES=10485760
+    APP_PORT=8001
+
+  qwen3-vl.service 변경 사항:
+    - Environment= 인라인 → EnvironmentFile=.env 파일 분리
+    - After=network.target → After=network-online.target
+      (네트워크 완전 연결 후 기동 보장)
+    - Wants=network-online.target 추가
+    - Restart=on-failure → Restart=always
+      (어떤 이유로든 종료 시 재시작)
+    - TimeoutStartSec=30 → 60 (부팅 직후 Ollama 로드 시간 여유)
+
+  배포 단계:
+    1) .env 파일 운영 경로 복사
+         cp ~/qwen3-vl/.env /var/www/atpia.com/public_html/qwen3-vl/.env
+    2) 업데이트된 서비스 파일 복사
+         sudo cp ~/qwen3-vl/qwen3-vl.service /etc/systemd/system/
+    3) systemd 리로드 + 부팅 자동시작 등록
+         sudo systemctl daemon-reload
+         sudo systemctl enable --now qwen3-vl
+
+  확인:
+    curl http://127.0.0.1:8001/api/health
+    → {"ollama":"ok","target_model":"qwen3-vl:8b","model_ready":true,
+       "available_models":["qwen3-vl:8b","qwen3:14b","qwen3:8b"]}
+
+  리부팅 후 https://atpia.com/qwen3-vl/index.html 접속 정상 확인.
+
+─────────────────────────────────────────────────────────────
+[8] 개발보고서 작성 (블로그 게시용)
+─────────────────────────────────────────────────────────────
+
+사용자:
+  지금까지의 작업내용을 정리하여 블로그에 게시할 개발보고서를 작성해 주세요.
+
+Claude:
+  네이버 블로그 게시용 개발보고서 작성.
+
+  보고서 구성:
+    1. 개요
+    2. 개발 배경 (qwen3:8b 대비 비교표 포함)
+    3. 기술 스택
+    4. 시스템 구조 (브라우저 → Apache → FastAPI → Ollama 흐름도)
+    5. 백엔드 구현 (strip_data_uri, validate_image_size, SSE 스트리밍)
+    6. 프론트엔드 구현 (이미지 첨부 3가지 방법, 주요 UI 기능)
+    7. 배포 (Apache 설정, systemd 서비스 + .env)
+    8. 프로젝트 구조
+    9. 헬스체크 API 응답 예시
+    10. 마치며
+
+─────────────────────────────────────────────────────────────
+[9] 최종 프로젝트 구조
+─────────────────────────────────────────────────────────────
+
+  qwen3-vl/
+  ├── main.py                 # FastAPI 백엔드 (멀티모달)
+  ├── requirements.txt        # Python 의존성
+  ├── .env                    # 환경변수 (서비스 자동시작용, 신규)
+  ├── CLAUDE.md               # 프로젝트 문서
+  ├── Dockerfile
+  ├── docker-compose.yml
+  ├── apache-qwen3-vl.conf    # Apache 리버스 프록시 설정 참고용
+  ├── qwen3-vl.service        # systemd 서비스 파일 (개선됨)
+  ├── conversation.txt        # 본 대화 기록
+  └── static/
+      └── index.html          # 채팅 UI (이미지 업로드 포함)
+
+================================================================
